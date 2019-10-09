@@ -205,7 +205,7 @@ class MultiHeadAttentionCell(AttentionCell):
         self._base_cell = base_cell
         self._num_heads = num_heads
         self._use_bias = use_bias
-        units = {'query': query_units, 'key': key_units, 'value': value_units}
+        unites = {'in': query_units * 3}
         for name, unit in units.items():
             if unit % self._num_heads != 0:
                 raise ValueError(
@@ -219,33 +219,22 @@ class MultiHeadAttentionCell(AttentionCell):
                     nn.Dense(units=unit, use_bias=self._use_bias, flatten=False,
                              weight_initializer=weight_initializer,
                              bias_initializer=bias_initializer, prefix='{}_'.format(name)))
+        with self.name_scope():
+            self.dropout_layer = nn.Dropout(base_cell._dropout)
 
-    def __call__(self, query, key, value=None, mask=None):
-        """Compute the attention.
-
-        Parameters
-        ----------
-        query : Symbol or NDArray
-            Query vector. Shape (batch_size, query_length, query_dim)
-        key : Symbol or NDArray
-            Key of the memory. Shape (batch_size, memory_length, key_dim)
-        value : Symbol or NDArray or None, default None
-            Value of the memory. If set to None, the value will be set as the key.
-            Shape (batch_size, memory_length, value_dim)
-        mask : Symbol or NDArray or None, default None
-            Mask of the memory slots. Shape (batch_size, query_length, memory_length)
-            Only contains 0 or 1 where 0 means that the memory slot will not be used.
-            If set to None. No mask will be used.
-
-        Returns
-        -------
-        context_vec : Symbol or NDArray
-            Shape (batch_size, query_length, context_vec_dim)
-        att_weights : Symbol or NDArray
-            Attention weights of multiple heads.
-            Shape (batch_size, num_heads, query_length, memory_length)
-        """
-        return super(MultiHeadAttentionCell, self).__call__(query, key, value, mask)
+    def hybrid_forward(self, F, query, key, value=None, mask=None):
+        qkv_proj = self.proj_in(query)
+        if mask is not None:
+            mask = F.broadcast_axis(F.expand_dims(mask, axis=1),
+                                    axis=1, size=self._num_heads)\
+                    .reshape(shape=(-1, 0), reverse=True)
+        att_score = F.interleaved_matmul_selfatt_qk(qkv_proj, heads=self._num_heads,
+                                                    bwd_ignore_zero_init=True)
+        att_weights = self.dropout_layer(_masked_softmax(F, att_score, mask, self._dtype))
+        context_vec = F.interleaved_matmul_selfatt_valatt(qkv_proj, att_weights,
+                                                          heads=self._num_heads,
+                                                          bwd_ignore_zero_init=True)
+        return context_vec, att_weights
 
     def _project(self, F, name, x):
         # Shape (batch_size, query_length, query_units)

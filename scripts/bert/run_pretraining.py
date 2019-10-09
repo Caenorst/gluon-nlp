@@ -143,6 +143,7 @@ level = logging.DEBUG if args.verbose else logging.INFO
 logging.getLogger().setLevel(level)
 logging.info(args)
 os.environ['MXNET_GPU_MEM_POOL_TYPE'] = 'Round'
+os.environ['MXNET_EXEC_ENABLE_ADDTO'] = '1'
 
 class DataParallelBERT(nlp.utils.Parallelizable):
     """Data parallel BERT model.

@@ -473,8 +473,10 @@ class BERTModel(HybridBlock):
         if self._use_token_type_embed:
             type_embedding = self.token_type_embed(token_types)
             embedding = embedding + type_embedding
+        embedding = embedding.transpose((1, 0, 2))
         # encoding
         outputs, additional_outputs = self.encoder(embedding, valid_length=valid_length)
+        outputs = outputs.transpose((1, 0, 2))
         return outputs, additional_outputs
 
     def _apply_pooling(self, sequence):

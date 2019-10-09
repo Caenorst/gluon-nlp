@@ -448,7 +448,9 @@ class BaseTransformerEncoder(HybridBlock, Seq2SeqEncoder):
             seq_len = inputs.shape[axis]
             arange = F.arange(seq_len, dtype=inputs.dtype, ctx=inputs.context)
         else:
-            input_axis = inputs.slice(begin=(0, 0, 0), end=(1, None, 1)).reshape((-1))
+            end = [1,1,1]
+            end[axis] = None
+            input_axis = inputs.slice(begin=(0, 0, 0), end=tuple(end)).reshape((-1))
             zeros = F.zeros_like(input_axis)
             arange = F.arange(start=0, repeat=1, step=1,
                               infer_range=True, dtype=self._dtype)
@@ -498,7 +500,7 @@ class BaseTransformerEncoder(HybridBlock, Seq2SeqEncoder):
         if isinstance(states, list) and len(states) == 0:
             states = None
 
-        steps = self._arange_like(F, inputs, axis=1)
+        steps = self._arange_like(F, inputs, axis=0)
         if valid_length is not None:
             ones = F.ones_like(steps)
             mask = F.broadcast_lesser(F.reshape(steps, shape=(1, -1)),
@@ -523,7 +525,7 @@ class BaseTransformerEncoder(HybridBlock, Seq2SeqEncoder):
             steps = states[-1]
             # positional encoding
             positional_embed = F.Embedding(steps, position_weight, self._max_length, self._units)
-            inputs = F.broadcast_add(inputs, F.expand_dims(positional_embed, axis=0))
+            inputs = F.broadcast_add(inputs, F.expand_dims(positional_embed, axis=1))
         if self._dropout:
             if self._use_layer_norm_before_dropout:
                 inputs = self.layer_norm(inputs)
@@ -547,7 +549,7 @@ class BaseTransformerEncoder(HybridBlock, Seq2SeqEncoder):
             if self._output_all_encodings:
                 if valid_length is not None:
                     outputs = F.SequenceMask(outputs, sequence_length=valid_length,
-                                             use_sequence_length=True, axis=1)
+                                             use_sequence_length=True, axis=0)
                 all_encodings_outputs.append(outputs)
 
             if self._output_attention:
@@ -555,7 +557,7 @@ class BaseTransformerEncoder(HybridBlock, Seq2SeqEncoder):
 
         if valid_length is not None:
             outputs = F.SequenceMask(outputs, sequence_length=valid_length,
-                                     use_sequence_length=True, axis=1)
+                                     use_sequence_length=True, axis=0)
 
         if self._output_all_encodings:
             return all_encodings_outputs, additional_outputs
